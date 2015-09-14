@@ -25,6 +25,7 @@ int main(int argc, char *argv[]) {
   printf("From: %s\n",fromd);
   printf("To  : %s\n",tod);
   printf("Rmag< %5.1f\n",magcut);
+  printf("b>= %5.1f\n",bcut);
 
   char cfrom[1024];
   char cto[1024];
@@ -44,11 +45,12 @@ int main(int argc, char *argv[]) {
       sprintf(ctoa ,"%s/%03d/m%04d.acc",tod  ,i,i*10+j);
 
       // Input to output statement
-      printf("%s -> %s\n",cfrom,cto);
+      printf("\n%s -> %s\n",cfrom,cto);
  
       // Open output file
       ofstream *fout = new ofstream(cto,  ios::out|ios::binary);
       if (!fout->is_open()) {
+	printf("Could not create %s\n",cto);
 	continue;
       }
 
@@ -56,27 +58,32 @@ int main(int argc, char *argv[]) {
       star *stars;
       int nstars=readfile(cfrom,stars);
 
-
-
+      // Write stars that make the cut
       int nkept=0;
       int cbin=0;
       int outarr[24*4];
       for (int i=0; i<24*4; ++i) outarr[i]=0;
 
+      printf("      %d stars read in\n",nstars);
+
       for (int i=0; i<nstars; ++i) {
 
-	if (stars[i].B>magcut) continue;
-	if (stars[i].V>magcut) continue;
-	if (stars[i].R>magcut) continue;
-	if (stars[i].J>magcut) continue;
-	if (stars[i].H>magcut) continue;
-	if (stars[i].K>magcut) continue;
-
+	//printf("%5.1f %5.1f\n",stars[i].RA,stars[i].DEC);
+	//printf("%5.1f %5.1f %5.1f %5.1f %5.1f %5.1f\n",
+	//stars[i].B,stars[i].V,stars[i].R,
+	//stars[i].J,stars[i].H,stars[i].K);
+	if ((stars[i].B>magcut) && 
+	    (stars[i].V>magcut) &&  
+	    (stars[i].R>magcut) && 
+	    (stars[i].J>magcut) && 
+	    (stars[i].H>magcut) && 
+	    (stars[i].K>magcut)) continue;
 	double cra=(double)stars[i].RA;;
-	double cdec=(double)stars[i].DEC;
-	double b=radec_to_b(cra,cdec);
-	if (fabs(b)<bcut) continue;
-
+	if (bcut>0) {
+	  double cdec=(double)stars[i].DEC;
+	  double b=radec_to_b(cra,cdec);
+	  if (fabs(b)<bcut) continue;
+	}
 	//printf("RA=%5.2f DEC=%5.2f b=%5.2f\n",cra,cdec,b);
 	while (cra>cbin*3.75) {
 	  cbin+=1;

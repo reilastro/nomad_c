@@ -233,44 +233,48 @@ int readfile(char *name, star* &stars, int nin, float *cut)
     nread+=1;
     
     // If cuts were given then chose IF we keep current star
-    if (cut!=NULL) {
-	// Look at first two values (RA and DEC)
-	for (int i=0; i<2; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
-	valuef[1]=90.0-valuef[1];
+    if (cut==NULL) {
+      for (int i=0; i<2; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
+      for (int i=10; i<16; ++i) {
+	valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
+      }
+      valuef[1]=90.0-valuef[1];
+    } else {
+      // Look at first two values (RA and DEC)
+      for (int i=0; i<2; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
+      valuef[1]=90.0-valuef[1];
+      
+      // Cut on RA and DEC
+      if (cut[2]<360 and cut[2]>0) {
+	float ad=angdist(cut[0],cut[1],valuef[0],valuef[1]);
 	
-	// Cut on RA and DEC
-	if (cut[2]<360 and cut[2]>0) {
-	  float ad=angdist(cut[0],cut[1],valuef[0],valuef[1]);
-	  
-	  
-	  //if (ad<10.0)
-	  //  printf("ad=%5.1f vs %5.1f     %f %f %f %f\n",ad,cut[2],
+	
+	//if (ad<10.0)
+	//  printf("ad=%5.1f vs %5.1f     %f %f %f %f\n",ad,cut[2],
 	  //	 cut[0],valuef[0],cut[1],valuef[1]);
-	  if (ad>cut[2]) continue;
-	}
+	if (ad>cut[2]) continue;
+      }
+      
+      // Look at magnitudes (10-16)
+      for (int i=10; i<16; ++i) 
+	valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
 	
-	// Look at magnitudes (10-16)
-	for (int i=10; i<16; ++i) 
-	  valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
-	
-	// Cut on magnitudes
-	int ncut=6;
-	for (int i=10; i<16; ++i) {
-	  if (cut[3]>=30 and cut[4]>=30) break;
-	  if (valuef[i]>cut[4] && valuef[i]<cut[3]) ncut-=1;
-	}
+      // Cut on magnitudes
+      int ncut=6;
+      for (int i=10; i<16; ++i) {
+	if (cut[3]>=30 and cut[4]>=30) break;
+	if (valuef[i]>cut[4] && valuef[i]<cut[3]) ncut-=1;
+      }
 	stars[nkept].bad=0;
 	if (ncut>=6) stars[nkept].bad=1;
 	if (stars[nkept].bad==1) continue;
-      } else {
-      for (int i=0; i<2; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
-      valuef[1]=90.0-valuef[1];
-      // end of cuts (if provided)
     }
     // Load values 2-10 and 16-22
     for (int i=2; i<10; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
     for (int i=16; i<22; ++i) values[i]=bytes_to_int(&buffer[i*4]);
     
+    
+
     stars[nkept].RA=valuef[0];
     stars[nkept].DEC=valuef[1];
     stars[nkept].sRA=valuef[2];
