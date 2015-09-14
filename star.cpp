@@ -2,12 +2,16 @@
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
-#include <math.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "star.hpp"
+#include "star.h"
 
 using namespace std;
+
+#include "math.h"
+#define PI (3.141592653589793)
+#define RAD2DEG 180.0/PI
+#define DEG2RAD PI/180.0
 
 int bytes_to_int(char *in) {
   int int32=0;
@@ -64,7 +68,7 @@ int recenter(float ra, float dec, int nstars, star *stars) {
 
     double newdec=sdec-dec;
 
-    double newra=(sra-ra);// *cos((dec+sdec)/2.0*DEG2RAD);
+    double newra=(sra-ra);
     if (newra<-180.0) newra+=360.0;
     if (newra> 180.0) newra-=360.0;
 
@@ -122,13 +126,26 @@ int recenter(float ra, float dec, int nstars, star *stars) {
   }
 }
 
-int radec2gal(float ra, float dec, float *b, float *l) {
-  
-
+double radec_to_b(double ra, double dec) {
+  double sinb=0.0;
+  sinb+=sin(dec*DEG2RAD)*cos(62.6*DEG2RAD);
+  sinb-=cos(dec*DEG2RAD)*sin((ra-282.25)*DEG2RAD)*sin(62.6*DEG2RAD);
+  return asin(sinb)*RAD2DEG;
 }
 
-int gal2radec(float ra, float dec, float *b, float *l) {
+double radecb_to_l(double ra, double dec, double b) {
+  double cosb=cos(b*DEG2RAD);
+  double cosdec=cos(dec*DEG2RAD);
+  double cosra=cos((ra-282.25)*DEG2RAD);
+  return 33.0+acos(cosdec*cosra)*RAD2DEG;
+}
 
+
+void radec_to_bl(double ra, double dec, double *b, double *l) {
+  // http://scienceworld.wolfram.com/astronomy/GalacticCoordinates.html
+  *b=radec_to_b(ra,dec);
+  *l=radecb_to_l(ra,dec,*b);
+  return;
 }
 
 int recenter_v1(float ra, float dec, int nstars, star *stars) {
@@ -161,132 +178,140 @@ int recenter_v1(float ra, float dec, int nstars, star *stars) {
   }
 }
 
+int readfile(char *name, star* &stars, int nin, float *cut) 
+{
+  /// Fills an array of stars starting at location nin from file *name 
+  /// cuts are <ra> <deg> <degrees from radec> <bright R> <faint R>
 
-
-
-int readfile(char *name, float *cut, star* &stars,int nin) {
-
-  /*
-  char *names[25]={"RA","DEC","sRA","sDEC",                   //4
-		   "vRA","vDEC","svRA","svDEC",               //4
-		   "ceRA","ceDEC",                            //2
-		   "B","V","R","J","H","K",                   //6
-		   "USNO-B1","2MASS","YB6","UCAC-2","Tycho2", //5
-		   "flags",                                  //1
-		   "cRA","cDEC","good"};
-  */
-
-
-  ifstream fin(name,ios::in|ios::binary);
-
+  // Raw values in
   int values[22];
+  // How to multiply integers in to get "normal" units
   float mult[22];
+  // Floating point values from file
   float valuef[22];
+  // Single star buffer
   char buffer[88];
 
+  // Open the filename in binary mode
+  ifstream fin(name,ios::in|ios::binary);
+
+  // Mulitpliers need for integer to float conversions
   for (int i= 0; i<10; ++i) mult[i]=0.001/60/60;
   for (int i=10; i<16; ++i) mult[i]=0.001;
   for (int i=16; i<22; ++i) mult[i]=1.0;
 
+  // Check if file exists, if not, return nothing
   struct stat results;
   if (stat(name, &results)!=0) {
     return nin;
   }
+
+  // Check how many stars are in the file (could also use accel file)
   int nstars=results.st_size/88;
   if (nstars==0) return nin;
 
-  if (1==2) {
-    printf("%d stars in file\n",nstars);
-    printf("cuts are RA=%f DEC=%f ang=%f bri=%f fai=%f\n",cut[0],cut[1],cut[2],cut[4],cut[3]);
-  }
-
+  // Create (or update) a memory block
   if (stars==NULL || nin==0) {
     stars=(struct star*)calloc(nstars,sizeof(star));
   } else {
     stars=(struct star*)realloc(stars,(nstars+nin)*sizeof(star));
   }
 
+  // is file open?
+  if (!fin.is_open()) {
+      printf("Could not open file name %s.\n",name);
+      return nin;
+    }
+  // File is, in fact, open
+
+  // Loop over file and read in all stars
   int nread=0;
   int nkept=nin;
-  if (fin.is_open()) {
-    while (1==1) {
-      fin.read(buffer,88);
-      if (fin.eof()) break;
-      nread+=1;
-
-      // Look at first two values (RA and DEC)
+  while (1==1) {
+    fin.read(buffer,88);
+    if (fin.eof()) break;
+    nread+=1;
+    
+    // If cuts were given then chose IF we keep current star
+    if (cut!=NULL) {
+	// Look at first two values (RA and DEC)
+	for (int i=0; i<2; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
+	valuef[1]=90.0-valuef[1];
+	
+	// Cut on RA and DEC
+	if (cut[2]<360 and cut[2]>0) {
+	  float ad=angdist(cut[0],cut[1],valuef[0],valuef[1]);
+	  
+	  
+	  //if (ad<10.0)
+	  //  printf("ad=%5.1f vs %5.1f     %f %f %f %f\n",ad,cut[2],
+	  //	 cut[0],valuef[0],cut[1],valuef[1]);
+	  if (ad>cut[2]) continue;
+	}
+	
+	// Look at magnitudes (10-16)
+	for (int i=10; i<16; ++i) 
+	  valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
+	
+	// Cut on magnitudes
+	int ncut=6;
+	for (int i=10; i<16; ++i) {
+	  if (cut[3]>=30 and cut[4]>=30) break;
+	  if (valuef[i]>cut[4] && valuef[i]<cut[3]) ncut-=1;
+	}
+	stars[nkept].bad=0;
+	if (ncut>=6) stars[nkept].bad=1;
+	if (stars[nkept].bad==1) continue;
+      } else {
       for (int i=0; i<2; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
       valuef[1]=90.0-valuef[1];
+      // end of cuts (if provided)
+    }
+    // Load values 2-10 and 16-22
+    for (int i=2; i<10; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
+    for (int i=16; i<22; ++i) values[i]=bytes_to_int(&buffer[i*4]);
+    
+    stars[nkept].RA=valuef[0];
+    stars[nkept].DEC=valuef[1];
+    stars[nkept].sRA=valuef[2];
+    stars[nkept].sDEC=valuef[3];
+    stars[nkept].vRA=valuef[4];
+    stars[nkept].vDEC=valuef[5];
+    stars[nkept].svRA=valuef[6];
+    stars[nkept].svDEC=valuef[7];
+    stars[nkept].ceRA=valuef[8];
+    stars[nkept].ceDEC=valuef[9];
+    
+    stars[nkept].B=valuef[10];
+    stars[nkept].V=valuef[11];
+    stars[nkept].R=valuef[12];
+    stars[nkept].J=valuef[13];
+    stars[nkept].H=valuef[14];
+    stars[nkept].K=valuef[15];
+    
+    stars[nkept].USNO_B1=values[16];
+    stars[nkept].MASS2=values[17];
+    stars[nkept].YB6=values[18];
+    stars[nkept].UCAC_2=values[19];
+    stars[nkept].Tycho2=values[20];
+    
+    stars[nkept].flags=values[21];
+    
+    stars[nkept].cRA=valuef[0];
+    stars[nkept].cDEC=valuef[1];
 
-      // Cut on RA and DEC
-      if (cut[2]<360 and cut[2]>0) {
-	float ad=angdist(cut[0],cut[1],valuef[0],valuef[1]);
-
-	
-	//if (ad<10.0)
-	//  printf("ad=%5.1f vs %5.1f     %f %f %f %f\n",ad,cut[2],
-	//	 cut[0],valuef[0],cut[1],valuef[1]);
-	if (ad>cut[2]) continue;
-      }
-
-      // Look at magnitudes (10-16)
-      for (int i=10; i<16; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
-
-      // Cut on magnitudes
-      int ncut=6;
-      for (int i=10; i<16; ++i) {
-	if (cut[3]>=30 and cut[4]>=30) break;
-	if (valuef[i]>cut[4] && valuef[i]<cut[3]) ncut-=1;
-      }
-      stars[nkept].bad=0;
-      if (ncut>=6) stars[nkept].bad=1;
-      if (stars[nkept].bad==1) continue;
-
-      // Load values 2-10 and 16-22
-      for (int i=2; i<10; ++i) valuef[i]=mult[i]*bytes_to_int(&buffer[i*4]);
-      for (int i=16; i<22; ++i) values[i]=bytes_to_int(&buffer[i*4]);
-
-      stars[nkept].RA=valuef[0];
-      stars[nkept].DEC=valuef[1];
-      stars[nkept].sRA=valuef[2];
-      stars[nkept].sDEC=valuef[3];
-      stars[nkept].vRA=valuef[4];
-      stars[nkept].vDEC=valuef[5];
-      stars[nkept].svRA=valuef[6];
-      stars[nkept].svDEC=valuef[7];
-      stars[nkept].ceRA=valuef[8];
-      stars[nkept].ceDEC=valuef[9];
-      
-      stars[nkept].B=valuef[10];
-      stars[nkept].V=valuef[11];
-      stars[nkept].R=valuef[12];
-      stars[nkept].J=valuef[13];
-      stars[nkept].H=valuef[14];
-      stars[nkept].K=valuef[15];
-      
-      stars[nkept].USNO_B1=values[16];
-      stars[nkept].MASS2=values[17];
-      stars[nkept].YB6=values[18];
-      stars[nkept].UCAC_2=values[19];
-      stars[nkept].Tycho2=values[20];
-      
-      stars[nkept].flags=values[21];
-      
-      stars[nkept].cRA=valuef[0];
-      stars[nkept].cDEC=valuef[1];
-
-
-      //for (int i= 0; i<16; ++i) outf[nkept*16+i]=valuef[i];
-      //for (int i=16; i<22; ++i) outi[nkept* 6+i]=values[i];
-
-      nkept+=1;
-      if (nkept>=MAXSTARSKEPT) break;
-
-
-    }                                       // while 1==1 (loop over input file
-  } else {
-    printf("Could not open file name %s.\n",name);
-  }
+    for (int j=0; j<88; ++j) {
+      stars[nkept].raw[j]=buffer[j];
+    }    
+    
+    //for (int i= 0; i<16; ++i) outf[nkept*16+i]=valuef[i];
+    //for (int i=16; i<22; ++i) outi[nkept* 6+i]=values[i];
+    
+    nkept+=1;
+    if (nkept>=MAXSTARSKEPT) break;
+    
+    
+  } // while 1==1 (loop over input file
 
   //printf("Star list now size=%d\n",PyList_Size(starlist));
 

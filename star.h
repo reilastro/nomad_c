@@ -1,12 +1,4 @@
-#ifndef PI
-#define PI 3.1415926535 //8979323846264338327950288419
-#endif
-#ifndef DEG2RAD
-#define DEG2RAD (PI/180.0)
-#endif
-#ifndef RAD2DEG
-#define RAD2DEG (180.0/PI)
-#endif
+#include <stddef.h>
 
 #ifndef MAXSTARSKEPT
 #define MAXSTARSKEPT 6000000
@@ -43,10 +35,16 @@ struct star{
   int flags;
   int bad;
 
+  char raw[88];
+
 };
 
-int readfile(char *name, float *cut, star* &stars,int nin=0);
+int readfile(char *name, star* &stars, int nin=0, float *cut=NULL);
 float angdist(float ra1, float dec1,float ra2, float dec2, int verbose=0);
 int bytes_to_int(char *in);
 int recenter(float ra, float dec, int nstars, star *stars);
 int count_stars(float ra1, float dec1, float rad, int nstars, star *stars);
+
+double radec_to_b(double ra, double dec);
+double radecb_to_l(double ra, double dec, double b);
+void radec_to_bl(double ra, double dec, double *b, double *l);
